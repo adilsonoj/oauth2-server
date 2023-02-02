@@ -11,7 +11,6 @@ import java.util.UUID;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
@@ -23,7 +22,6 @@ import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
-import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
@@ -31,6 +29,9 @@ import org.springframework.security.oauth2.server.authorization.settings.Authori
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
@@ -52,16 +53,18 @@ public class AuthorizationServerConfig {
 	@Order(1)
 	public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http)
 			throws Exception {
-		OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
-
-		return http.formLogin(Customizer.withDefaults()).build();
+				OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http.cors().and());
+				
+				http.cors().and().csrf().disable()
+                .formLogin(Customizer.withDefaults());
+		return http.build();
 	}
 
 	@Bean
 	@Order(2)
 	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http)
 			throws Exception {
-		http
+		http.cors().and().csrf().disable()
 				.authorizeHttpRequests((authorize) -> authorize
 						.anyRequest().authenticated())
 				// Form login handles the redirect to the login page from the
@@ -69,6 +72,20 @@ public class AuthorizationServerConfig {
 				.formLogin(Customizer.withDefaults());
 
 		return http.build();
+	}
+
+	@Bean
+	public CorsConfigurationSource corsConfigurationSource() {
+		CorsConfiguration config = new CorsConfiguration();
+		config.addAllowedOrigin("http://127.0.0.1:3000");
+		config.addAllowedHeader("*");
+		config.addAllowedMethod("*");
+		config.setAllowCredentials(true);
+
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", config);
+
+		return source;
 	}
 
 	// @Bean
@@ -142,7 +159,8 @@ public class AuthorizationServerConfig {
 				.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
 
 				.redirectUri("https://oidcdebugger.com/debug")
-				.redirectUri("http://127.0.0.1:8081/authorized")
+				.redirectUri("http://127.0.0.1:3000/callback")
+				.redirectUri("http://127.0.0.1:3000")
 				.redirectUri("https://oauth.pstmn.io/v1/callback")
 				// .scope(OidcScopes.OPENID)
 				// .scope(OidcScopes.PROFILE)
