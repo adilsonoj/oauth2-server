@@ -1,8 +1,11 @@
 package com.oliveira.authorization.server.oauth.model;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import jakarta.persistence.Column;
@@ -30,10 +33,16 @@ public class Usuario  implements UserDetails{
     private String password;
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return null;
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        List<String> of = List.of("ADMIN", "USER");
+        for (String perfil : of) {
+            authorities.add(new SimpleGrantedAuthority(perfil));
+        }
+        return authorities;
     }
     @Override
     public boolean isAccountNonExpired() {
+       
         return true;
     }
     @Override

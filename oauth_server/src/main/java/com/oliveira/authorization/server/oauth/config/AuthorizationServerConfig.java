@@ -6,7 +6,9 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,11 +18,15 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
+import org.springframework.security.oauth2.core.oidc.OidcScopes;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
@@ -28,6 +34,8 @@ import org.springframework.security.oauth2.server.authorization.config.annotatio
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
+import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -41,6 +49,7 @@ import com.nimbusds.jose.proc.SecurityContext;
 import com.oliveira.authorization.server.oauth.service.UserService;
 
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 
 @EnableWebSecurity
 @Configuration(proxyBeanMethods = false)
@@ -53,10 +62,13 @@ public class AuthorizationServerConfig {
 	@Order(1)
 	public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http)
 			throws Exception {
-				OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http.cors().and());
-				
-				http.cors().and().csrf().disable()
-                .formLogin(Customizer.withDefaults());
+		OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http.cors().and());
+
+		http.cors().and().csrf().disable()
+
+				.formLogin(form->
+                        form.loginPage("/login")
+                                .loginProcessingUrl("/login"));
 		return http.build();
 	}
 
@@ -65,11 +77,18 @@ public class AuthorizationServerConfig {
 	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http)
 			throws Exception {
 		http.cors().and().csrf().disable()
-				.authorizeHttpRequests((authorize) -> authorize
+				.authorizeHttpRequests((authorize) -> authorize.requestMatchers("/login")
+						.permitAll()
 						.anyRequest().authenticated())
 				// Form login handles the redirect to the login page from the
 				// authorization server filter chain
-				.formLogin(Customizer.withDefaults());
+				// .logout(logout -> logout.permitAll()
+				// 		.logoutSuccessHandler((request, response, authentication) -> {
+				// 			response.setStatus(HttpServletResponse.SC_OK);
+				// 		}))
+				.formLogin(form->
+                        form.loginPage("/login")
+                                .loginProcessingUrl("/login"));
 
 		return http.build();
 	}
@@ -88,19 +107,6 @@ public class AuthorizationServerConfig {
 		return source;
 	}
 
-	// @Bean
-	// public UserDetailsService userDetailsService() {
-	// String password = encoder().encode("password");
-	// UserDetails userDetails = User.builder()
-	// .username("user1")
-	// .password(password)
-	// .roles("USER")
-	// .build();
-
-	// return new InMemoryUserDetailsManager(userDetails);
-	// }
-
-
 	@Bean
 	public AuthenticationManager authenticationManager(HttpSecurity http,
 			PasswordEncoder passwordEncoder,
@@ -117,18 +123,18 @@ public class AuthorizationServerConfig {
 		return new BCryptPasswordEncoder();
 	}
 
-
-	// @Bean
-	// public OAuth2TokenCustomizer<JwtEncodingContext>
-	// jwtEncodingContextTokenCustomizer(UserService service) {
-	// Set<String> authorities = new HashSet<>();
-	// service.loadUserByUsername("user1").getAuthorities().forEach(e ->
-	// authorities.add(e.getAuthority()));
-	// return (context -> {
-	// context.getClaims().claim("nome", "nome usuario");
-	// context.getClaims().claim("authorities", authorities);
-	// });
-	// }
+	@Bean
+	public OAuth2TokenCustomizer<JwtEncodingContext> jwtEncodingContextTokenCustomizer(UserService service) {
+		return (context -> {
+			if (context.getTokenType() == OAuth2TokenType.ACCESS_TOKEN) {
+				Authentication principal = context.getPrincipal();
+				Set<String> authorities = principal.getAuthorities().stream()
+						.map(GrantedAuthority::getAuthority)
+						.collect(Collectors.toSet());
+				context.getClaims().claim("authorities", authorities);
+			}
+		});
+	}
 
 	@Bean
 	public RegisteredClientRepository registeredClientRepository(PasswordEncoder passwordEncoder) {
@@ -155,14 +161,13 @@ public class AuthorizationServerConfig {
 				.clientSecret(passwordEncoder.encode("secret"))
 				.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
 				.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-				// .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
 				.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
 
 				.redirectUri("https://oidcdebugger.com/debug")
 				.redirectUri("http://127.0.0.1:3000/callback")
 				.redirectUri("http://127.0.0.1:3000")
 				.redirectUri("https://oauth.pstmn.io/v1/callback")
-				// .scope(OidcScopes.OPENID)
+				.scope(OidcScopes.OPENID)
 				// .scope(OidcScopes.PROFILE)
 				.scope("message.read")
 				.scope("message.write")
@@ -174,11 +179,12 @@ public class AuthorizationServerConfig {
 				.clientSettings(ClientSettings.builder().requireAuthorizationConsent(false).build())
 				.build();
 
-		// JdbcRegisteredClientRepository registeredClientRepository = new JdbcRegisteredClientRepository(jdbcTemplate);
+		// JdbcRegisteredClientRepository registeredClientRepository = new
+		// JdbcRegisteredClientRepository(jdbcTemplate);
 		// registeredClientRepository.save(registeredClient);
 		// registeredClientRepository.save(registeredClient2);
 
-		return new InMemoryRegisteredClientRepository(Arrays.asList(registeredClient,registeredClient2) );
+		return new InMemoryRegisteredClientRepository(Arrays.asList(registeredClient, registeredClient2));
 	}
 
 	@Bean
@@ -216,5 +222,4 @@ public class AuthorizationServerConfig {
 		return AuthorizationServerSettings.builder().build();
 	}
 
-	
 }
