@@ -80,13 +80,7 @@ public class AuthorizationServerConfig {
 				.authorizeHttpRequests((authorize) -> authorize.requestMatchers("/login")
 						.permitAll()
 						.anyRequest().authenticated())
-				// Form login handles the redirect to the login page from the
-				// authorization server filter chain
-				// .logout(logout -> logout.permitAll()
-				// 		.logoutSuccessHandler((request, response, authentication) -> {
-				// 			response.setStatus(HttpServletResponse.SC_OK);
-				// 		}))
-				.formLogin(form->
+				 			.formLogin(form->
                         form.loginPage("/login")
                                 .loginProcessingUrl("/login"));
 
@@ -168,7 +162,24 @@ public class AuthorizationServerConfig {
 				.redirectUri("http://127.0.0.1:3000")
 				.redirectUri("https://oauth.pstmn.io/v1/callback")
 				.scope(OidcScopes.OPENID)
-				// .scope(OidcScopes.PROFILE)
+				.tokenSettings(TokenSettings.builder()
+						.accessTokenTimeToLive(Duration.ofMinutes(120))
+						.refreshTokenTimeToLive(Duration.ofDays(1))
+						.reuseRefreshTokens(false)
+						.build())
+				.clientSettings(ClientSettings.builder().requireAuthorizationConsent(false).build())
+				.build();
+
+			RegisteredClient accredit = RegisteredClient
+				.withId(UUID.randomUUID().toString())
+				.clientId("accredit-client")
+				.clientSecret(passwordEncoder.encode("123456"))
+				.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+				.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+				.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+				.redirectUri("http://127.0.0.1:3000/callback")
+				.redirectUri("http://127.0.0.1:3000")
+				.scope(OidcScopes.OPENID)
 				.scope("message.read")
 				.scope("message.write")
 				.tokenSettings(TokenSettings.builder()
@@ -184,7 +195,7 @@ public class AuthorizationServerConfig {
 		// registeredClientRepository.save(registeredClient);
 		// registeredClientRepository.save(registeredClient2);
 
-		return new InMemoryRegisteredClientRepository(Arrays.asList(registeredClient, registeredClient2));
+		return new InMemoryRegisteredClientRepository(Arrays.asList(registeredClient, registeredClient2, accredit));
 	}
 
 	@Bean
