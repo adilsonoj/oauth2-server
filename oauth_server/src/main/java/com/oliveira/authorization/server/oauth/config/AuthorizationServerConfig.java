@@ -14,7 +14,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -46,6 +45,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.oliveira.authorization.server.oauth.model.Usuario;
 import com.oliveira.authorization.server.oauth.service.UserService;
 
 import jakarta.annotation.Resource;
@@ -65,10 +65,8 @@ public class AuthorizationServerConfig {
 		OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http.cors().and());
 
 		http.cors().and().csrf().disable()
-
-				.formLogin(form->
-                        form.loginPage("/login")
-                                .loginProcessingUrl("/login"));
+				.formLogin(form -> form.loginPage("/login")
+						.loginProcessingUrl("/login"));
 		return http.build();
 	}
 
@@ -80,9 +78,12 @@ public class AuthorizationServerConfig {
 				.authorizeHttpRequests((authorize) -> authorize.requestMatchers("/login")
 						.permitAll()
 						.anyRequest().authenticated())
-				 			.formLogin(form->
-                        form.loginPage("/login")
-                                .loginProcessingUrl("/login"));
+				.logout(logout -> logout.permitAll()
+						.logoutSuccessHandler((request, response, authentication) -> {
+							response.setStatus(HttpServletResponse.SC_OK);
+						}))
+				.formLogin(form -> form.loginPage("/login")
+						.loginProcessingUrl("/login"));
 
 		return http.build();
 	}
@@ -122,10 +123,12 @@ public class AuthorizationServerConfig {
 		return (context -> {
 			if (context.getTokenType() == OAuth2TokenType.ACCESS_TOKEN) {
 				Authentication principal = context.getPrincipal();
+				Usuario usuario = (Usuario) principal.getPrincipal();
 				Set<String> authorities = principal.getAuthorities().stream()
 						.map(GrantedAuthority::getAuthority)
 						.collect(Collectors.toSet());
 				context.getClaims().claim("authorities", authorities);
+				context.getClaims().claim("sistemas", usuario.getSistemas());
 			}
 		});
 	}
@@ -162,6 +165,8 @@ public class AuthorizationServerConfig {
 				.redirectUri("http://127.0.0.1:3000")
 				.redirectUri("https://oauth.pstmn.io/v1/callback")
 				.scope(OidcScopes.OPENID)
+				.scope("message.read")
+				.scope("message.write")
 				.tokenSettings(TokenSettings.builder()
 						.accessTokenTimeToLive(Duration.ofMinutes(120))
 						.refreshTokenTimeToLive(Duration.ofDays(1))
@@ -170,7 +175,7 @@ public class AuthorizationServerConfig {
 				.clientSettings(ClientSettings.builder().requireAuthorizationConsent(false).build())
 				.build();
 
-			RegisteredClient accredit = RegisteredClient
+		RegisteredClient accredit = RegisteredClient
 				.withId(UUID.randomUUID().toString())
 				.clientId("accredit-client")
 				.clientSecret(passwordEncoder.encode("123456"))

@@ -9,7 +9,9 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -40,8 +42,10 @@ public class Usuario implements UserDetails {
     @OneToMany(fetch = FetchType.EAGER)
     private Set<Role> roles;
 
+    @ElementCollection(targetClass = EnumType.class, fetch = FetchType.EAGER)
+    @CollectionTable
     @Enumerated(EnumType.STRING)
-    private Sistema sistema;
+    private Set<Sistema> sistemas;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
